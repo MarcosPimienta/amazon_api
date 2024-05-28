@@ -11,10 +11,11 @@ import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiProperty,
   ApiBody,
+  ApiProperty,
+  ApiConsumes,
 } from '@nestjs/swagger';
-import { ApiPlainTextBody } from '../../decorators/plain-text.decorator';
+import { IsString, IsNumber } from 'class-validator';
 
 class UpcStringDto {
   @ApiProperty({
@@ -30,6 +31,30 @@ class UpcsDto {
     example: ['123456789012', '123456789013'],
   })
   upcs: string[];
+}
+
+export class RawTextDto {
+  @ApiProperty({
+    description: 'Raw text input, each UPC on a new line.',
+    example: `35406-03324
+615908426328
+796845691977
+615908420821
+792486906111`,
+    type: 'string',
+    format: 'textarea',
+  })
+  @IsString()
+  upc: string;
+}
+
+class RankFilterDto {
+  @ApiProperty({
+    description: 'Minimum rank to filter products by',
+    example: 1,
+  })
+  @IsNumber()
+  minRank: number;
 }
 
 @ApiTags('catalog')
@@ -73,13 +98,44 @@ export class CatalogController {
     description: 'UPC string transformed successfully.',
   })
   @ApiResponse({ status: 400, description: 'Bad request.' })
-  @ApiPlainTextBody()
+  @ApiConsumes('text/plain')
   transformUpcs(@Body('upc') upc: string): string {
     const transformedUpcString = this.convertUpcStringsToList(upc);
     if (transformedUpcString.length === 0) {
       throw new BadRequestException('No valid UPCs found.');
     }
     return transformedUpcString;
+  }
+
+  @Post('fetch-filtered-products-by-upcs')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Fetch product data by UPCs and filter by minimum rank',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Filtered product data retrieved successfully.',
+  })
+  @ApiResponse({ status: 400, description: 'Bad request.' })
+  @ApiBody({ type: UpcsDto })
+  async fetchFilteredProducts(
+    @Body() upcsDto: UpcsDto,
+    @Body() rankFilterDto: RankFilterDto,
+  ) {
+    const products = await this.catalogService.fetchProductData(upcsDto.upcs);
+    const filteredProducts = this.catalogService.filterProductsByRank(
+      products,
+      rankFilterDto.minRank,
+    );
+
+    if (filteredProducts.length === 0) {
+      return {
+        message: 'No products found with the specified minimum rank.',
+        upcRanks: this.catalogService.extractUpcRanks(products),
+      };
+    }
+
+    return filteredProducts;
   }
 
   private convertUpcStringsToList(upcString: string): string {
