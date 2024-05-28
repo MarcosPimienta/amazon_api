@@ -122,13 +122,17 @@ export class CatalogService {
       .filter((upc) => upc.length > 0);
   }
 
-  public filterProductsByRank(products: any[], minRank: number): any[] {
+  public filterProductsByRank(
+    products: any[],
+    minRank: number,
+    maxRank: number,
+  ): any[] {
     return products.filter((product) => {
       const salesRanks = product.salesRanks || [];
       for (const salesRank of salesRanks) {
         if (salesRank.classificationRanks) {
           for (const rank of salesRank.classificationRanks) {
-            if (rank.rank <= minRank) {
+            if (rank.rank >= minRank && rank.rank <= maxRank) {
               return true;
             }
           }
@@ -138,20 +142,8 @@ export class CatalogService {
     });
   }
 
-  public extractUpcRanks(products: any[]): any[] {
-    return products.map((product) => {
-      const upc =
-        product.identifiers.find((id) => id.identifierType === 'UPC')
-          ?.identifier || 'Unknown UPC';
-      const rankInfo = product.salesRanks.map((salesRank) => ({
-        marketplaceId: salesRank.marketplaceId,
-        ranks: salesRank.classificationRanks.map((rank) => ({
-          classificationId: rank.classificationId,
-          title: rank.title,
-          rank: rank.rank,
-        })),
-      }));
-      return { upc, rankInfo };
-    });
+  public async getDataByUpcs(upcs: string[]): Promise<any[]> {
+    const data = await this.fetchProductData(upcs);
+    return data;
   }
 }
