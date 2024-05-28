@@ -121,4 +121,29 @@ export class CatalogService {
       .map((upc) => upc.replace('-', ''))
       .filter((upc) => upc.length > 0);
   }
+
+  public filterProductsByRank(
+    products: any[],
+    minRank: number,
+    maxRank: number,
+  ): any[] {
+    return products.filter((product) => {
+      const salesRanks = product.salesRanks || [];
+      for (const salesRank of salesRanks) {
+        if (salesRank.classificationRanks) {
+          for (const rank of salesRank.classificationRanks) {
+            if (rank.rank >= minRank && rank.rank <= maxRank) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    });
+  }
+
+  public async getDataByUpcs(upcs: string[]): Promise<any[]> {
+    const data = await this.fetchProductData(upcs);
+    return data;
+  }
 }
