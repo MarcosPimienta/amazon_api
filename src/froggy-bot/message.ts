@@ -13,8 +13,8 @@ export function setupMessageHandler(client: Client) {
   client.on(Events.MessageCreate, async (message: Message) => {
     if (message.author.bot) return; // Ignore messages from bots
 
-    // Extract UPCs from the message
-    const upcs = message.content.match(/\b\d{12}\b/g); // Assuming UPCs are 12-digit numbers
+    // Extract UPCs from the message (allowing 10-12 digit numbers)
+    const upcs = message.content.match(/\b\d{10,12}\b/g);
     console.log('Extracted UPCs:', upcs);
 
     if (upcs && upcs.length > 0) {
@@ -22,7 +22,10 @@ export function setupMessageHandler(client: Client) {
         let productInfo = 'Products Information:\n';
 
         // Process each UPC individually
-        for (const upc of upcs) {
+        for (let upc of upcs) {
+          // Remove hyphens from UPC
+          upc = upc.replace(/-/g, '');
+
           // Call the NestJS API to retrieve product information
           const response = await axios.post(
             'http://localhost:3000/catalog/fetch-products-by-upcs',
@@ -36,8 +39,7 @@ export function setupMessageHandler(client: Client) {
 
           const products = response.data as Product[];
           console.log(
-            `API Response for UPC ${upc}:`,
-            JSON.stringify(products, null, 2),
+            `API Response for UPC ${upc}:` /* JSON.stringify(products, null, 2) */,
           ); // Log API response for debugging
 
           if (products.length > 0) {
@@ -51,13 +53,20 @@ export function setupMessageHandler(client: Client) {
                 return `ASIN: ${product.asin}, Cost: ${cost}`;
               })
               .join('\n');
+
+            // Add a newline after the last ASIN for each UPC
+            productInfo += '\n';
           } else {
             productInfo += `\nUPC: ${upc}\nNo products found for the provided UPC.\n`;
           }
         }
 
-        // Send the formatted product information to the Discord chat
-        message.channel.send(productInfo);
+        // Split the message into chunks of 2000 characters
+        const messages = productInfo.match(/[\s\S]{1,2000}/g) || [];
+
+        for (const msg of messages) {
+          await message.channel.send(msg);
+        }
       } catch (error) {
         console.error('Error fetching product information:', error);
         message.channel.send(
