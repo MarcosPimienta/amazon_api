@@ -14,14 +14,11 @@ export function setupMessageHandler(client: Client) {
     if (message.author.bot) return; // Ignore messages from bots
 
     // Extract UPCs from the message (allowing 10-12 digit numbers)
-    const upcs = message.content.match(/\b\d{10,12}\b/g);
+    const upcs = message.content.match(/\b[\d-]{5,15}\b/g);
     console.log('Extracted UPCs:', upcs);
 
     if (upcs && upcs.length > 0) {
       try {
-        let productInfo = 'Products Information:\n';
-
-        // Process each UPC individually
         for (let upc of upcs) {
           // Remove hyphens from UPC
           upc = upc.replace(/-/g, '');
@@ -39,33 +36,26 @@ export function setupMessageHandler(client: Client) {
 
           const products = response.data as Product[];
           console.log(
-            `API Response for UPC ${upc}:` /* JSON.stringify(products, null, 2) */,
+            `API Response for UPC ${upc}:`,
+            //JSON.stringify(products, null, 2),
           ); // Log API response for debugging
 
-          if (products.length > 0) {
-            // Add UPC header
-            productInfo += `\nUPC: ${upc}\n`;
+          let productInfo = `**UPC: ${upc}**\n`;
 
+          if (products.length > 0) {
             // Add product details
             productInfo += products
               .map((product) => {
                 const cost = product.attributes.list_price?.[0]?.value ?? 'N/A';
-                return `ASIN: ${product.asin}, Cost: ${cost}`;
+                return `**ASIN**: ${product.asin}, **Cost**: ${cost}`;
               })
               .join('\n');
-
-            // Add a newline after the last ASIN for each UPC
-            productInfo += '\n';
           } else {
-            productInfo += `\nUPC: ${upc}\nNo products found for the provided UPC.\n`;
+            productInfo += `No products found for the provided UPC.`;
           }
-        }
 
-        // Split the message into chunks of 2000 characters
-        const messages = productInfo.match(/[\s\S]{1,2000}/g) || [];
-
-        for (const msg of messages) {
-          await message.channel.send(msg);
+          // Send the message
+          await message.channel.send(productInfo);
         }
       } catch (error) {
         console.error('Error fetching product information:', error);
