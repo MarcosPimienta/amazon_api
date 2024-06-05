@@ -9,13 +9,13 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { AxiosRequestConfig } from 'axios';
 import { firstValueFrom } from 'rxjs';
-import { map } from 'rxjs/operators';
 
 @Injectable()
 export class CatalogService {
   private readonly baseUrl: string;
   private readonly marketplaceId: string;
   private readonly includedData: string;
+  private readonly productData: any[] = []; // Replace with actual product data
 
   constructor(
     private httpService: HttpService,
@@ -24,14 +24,6 @@ export class CatalogService {
     this.baseUrl = this.configService.get<string>('BASE_URL');
     this.marketplaceId = this.configService.get<string>('MARKETPLACE_ID');
     this.includedData = this.configService.get<string>('INCLUDED_DATA');
-  }
-
-  public fetchProductByUPC(upc: string) {
-    const url = `https://api.amazon.com/products?upc=${upc}`; // Example URL
-    return this.httpService
-      .get(url)
-      .pipe(map((response) => response.data))
-      .toPromise();
   }
 
   private buildFetchUrl(upcs: string[]): string {
@@ -122,28 +114,12 @@ export class CatalogService {
       .filter((upc) => upc.length > 0);
   }
 
-  public filterProductsByRank(
-    products: any[],
-    minRank: number,
-    maxRank: number,
-  ): any[] {
+  public filterProductsByUpcs(products: any[], upcs: string[]): any[] {
     return products.filter((product) => {
-      const salesRanks = product.salesRanks || [];
-      for (const salesRank of salesRanks) {
-        if (salesRank.classificationRanks) {
-          for (const rank of salesRank.classificationRanks) {
-            if (rank.rank >= minRank && rank.rank <= maxRank) {
-              return true;
-            }
-          }
-        }
-      }
-      return false;
+      const upcIdentifiers = product.identifiers
+        .filter((id) => id.identifierType === 'UPC')
+        .map((id) => id.identifier);
+      return upcIdentifiers.some((upc) => upcs.includes(upc));
     });
-  }
-
-  public async getDataByUpcs(upcs: string[]): Promise<any[]> {
-    const data = await this.fetchProductData(upcs);
-    return data;
   }
 }
