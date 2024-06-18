@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
   HttpCode,
@@ -16,6 +17,8 @@ import {
 } from '@nestjs/swagger';
 import { IsString } from 'class-validator';
 import { ApiPlainTextBody } from 'src/decorators/plain-text.decorator';
+import { getWalmartProducts, WalmartProduct } from '../../webscrapper/scrapper';
+import { searchAmazonByUPC } from '../../webscrapper/amazonSearch';
 
 class UpcStringDto {
   @ApiProperty({
@@ -52,6 +55,30 @@ export class RawTextDto {
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
+
+  @Get('scrape-walmart')
+  @HttpCode(HttpStatus.OK)
+  async scrapeWalmart(@Body('query') query: string): Promise<WalmartProduct[]> {
+    try {
+      const products = await getWalmartProducts(query);
+      return products;
+    } catch (error) {
+      console.error('Error in scrapeWalmart endpoint:', error);
+      throw new BadRequestException('Error scraping Walmart');
+    }
+  }
+
+  @Post('search-amazon')
+  @HttpCode(HttpStatus.OK)
+  async searchAmazon(@Body('upc') upc: string) {
+    try {
+      const products = await searchAmazonByUPC(upc);
+      return products;
+    } catch (error) {
+      console.error('Error in searchAmazon endpoint:', error);
+      throw new BadRequestException('Error searching Amazon');
+    }
+  }
 
   @Post('fetch-products-by-upcs')
   @HttpCode(HttpStatus.OK)

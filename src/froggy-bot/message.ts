@@ -1,5 +1,6 @@
 import { Client, Events, Message } from 'discord.js';
 import axios from 'axios';
+import { getWalmartProducts } from '../webscrapper/scrapper';
 
 interface Product {
   asin: string;
@@ -13,17 +14,21 @@ export function setupMessageHandler(client: Client) {
   client.on(Events.MessageCreate, async (message: Message) => {
     if (message.author.bot) return; // Ignore messages from bots
 
-    // Extract UPCs from the message (allowing 10-12 digit numbers)
-    const upcs = message.content.match(/\b[\d-]{5,15}\b/g);
-    console.log('Extracted UPCs:', upcs);
-
-    if (upcs && upcs.length > 0) {
+    const content = message.content.trim();
+    if (content.startsWith('!walmart ')) {
+      const query = content.replace('!walmart ', '');
       try {
-        for (let upc of upcs) {
-          // Remove hyphens from UPC
-          upc = upc.replace(/-/g, '');
+        const walmartProducts = await getWalmartProducts(query);
+        if (walmartProducts.length === 0) {
+          await message.channel.send('No products found on Walmart.');
+          return;
+        }
 
-          // Call the NestJS API to retrieve product information
+        const upcs = walmartProducts.map((product) =>
+          product.upc.replace('-', ''),
+        );
+
+        for (const upc of upcs) {
           const response = await axios.post(
             'http://localhost:3000/catalog/fetch-products-by-upcs',
             { upcs: [upc] },
@@ -35,26 +40,17 @@ export function setupMessageHandler(client: Client) {
           );
 
           const products = response.data as Product[];
-          console.log(
-            `API Response for UPC ${upc}:`,
-            //JSON.stringify(products, null, 2),
-          ); // Log API response for debugging
-
-          let productInfo = `**UPC: ${upc}**\n`;
+          let productInfo = `**Products Information for UPC: ${upc}**\n`;
 
           if (products.length > 0) {
-            // Add product details
-            productInfo += products
-              .map((product) => {
-                const cost = product.attributes.list_price?.[0]?.value ?? 'N/A';
-                return `**ASIN**: ${product.asin}, **Cost**: ${cost}`;
-              })
-              .join('\n');
+            products.forEach((product) => {
+              const cost = product.attributes.list_price?.[0]?.value ?? 'N/A';
+              productInfo += `**ASIN**: ${product.asin}, **Cost**: ${cost}\n`;
+            });
           } else {
-            productInfo += `No products found for the provided UPC.`;
+            productInfo += '*No products found for the provided UPC.*\n';
           }
 
-          // Send the message
           await message.channel.send(productInfo);
         }
       } catch (error) {
@@ -63,8 +59,6 @@ export function setupMessageHandler(client: Client) {
           'There was an error fetching the product information. Please try again later.',
         );
       }
-    } else {
-      message.channel.send('No valid UPCs found in your message.');
     }
   });
 }
