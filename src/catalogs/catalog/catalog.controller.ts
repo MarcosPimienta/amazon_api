@@ -1,11 +1,11 @@
 import {
   Controller,
+  Get,
   Post,
   Body,
   HttpCode,
   HttpStatus,
   BadRequestException,
-  Query,
 } from '@nestjs/common';
 import { CatalogService } from './catalog.service';
 import {
@@ -14,10 +14,11 @@ import {
   ApiResponse,
   ApiBody,
   ApiProperty,
-  ApiQuery,
 } from '@nestjs/swagger';
 import { IsString } from 'class-validator';
 import { ApiPlainTextBody } from 'src/decorators/plain-text.decorator';
+import { getWalmartProducts, WalmartProduct } from '../../webscrapper/scrapper';
+import { searchAmazonByUPC } from '../../webscrapper/amazonSearch';
 
 class UpcStringDto {
   @ApiProperty({
@@ -49,10 +50,35 @@ export class RawTextDto {
   @IsString()
   upc: string;
 }
+
 @ApiTags('catalog')
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly catalogService: CatalogService) {}
+
+  @Get('scrape-walmart')
+  @HttpCode(HttpStatus.OK)
+  async scrapeWalmart(@Body('query') query: string): Promise<WalmartProduct[]> {
+    try {
+      const products = await getWalmartProducts(query);
+      return products;
+    } catch (error) {
+      console.error('Error in scrapeWalmart endpoint:', error);
+      throw new BadRequestException('Error scraping Walmart');
+    }
+  }
+
+  @Post('search-amazon')
+  @HttpCode(HttpStatus.OK)
+  async searchAmazon(@Body('upc') upc: string) {
+    try {
+      const products = await searchAmazonByUPC(upc);
+      return products;
+    } catch (error) {
+      console.error('Error in searchAmazon endpoint:', error);
+      throw new BadRequestException('Error searching Amazon');
+    }
+  }
 
   @Post('fetch-products-by-upcs')
   @HttpCode(HttpStatus.OK)
@@ -91,66 +117,33 @@ export class CatalogController {
   })
   @ApiResponse({ status: 400, description: 'Bad request.' })
   @ApiPlainTextBody()
-  @ApiQuery({
-    name: 'minRank',
-    required: false,
-    type: Number,
-    description: 'Minimum rank for filtering',
-  })
-  @ApiQuery({
-    name: 'maxRank',
-    required: false,
-    type: Number,
-    description: 'Maximum rank for filtering',
-  })
-  transformUpcs(
-    @Body('upc') upc: string,
-    @Query('minRank') minRank?: number,
-    @Query('maxRank') maxRank?: number,
-  ): any {
+  async transformUpcs(@Body('upc') upc: string): Promise<any> {
     if (typeof upc !== 'string') {
       throw new BadRequestException('Input must be a string.');
     }
 
-    const transformedUpcString = this.convertUpcStringsToList(upc);
-    if (transformedUpcString.length === 0) {
+    const transformedUpcList = this.catalogService.convertUpcStringsToList(upc);
+    if (transformedUpcList.length === 0) {
       throw new BadRequestException('No valid UPCs found.');
     }
 
-    // Perform filtering based on rank
-    const filteredData = this.filterByRank(
-      transformedUpcString,
-      minRank,
-      maxRank,
-    );
-
-    return filteredData;
-  }
-
-  private convertUpcStringsToList(upcString: string): string {
-    if (typeof upcString !== 'string') {
-      throw new BadRequestException('Input must be a string.');
-    }
-    return upcString.replace(/\s+/g, ' ').trim();
-  }
-
-  private async filterByRank(
-    upcs: string,
-    minRank?: number,
-    maxRank?: number,
-  ): Promise<any> {
-    const data = this.catalogService.getDataByUpcs(upcs.split(' ')); // Assuming getDataByUpcs fetches data for given UPCs
-
-    if (!data) {
+    const data = await this.catalogService.fetchProductData(transformedUpcList);
+    if (!data || data.length === 0) {
       throw new BadRequestException('No data found for the provided UPCs.');
     }
 
-    return (await data).filter((item) => {
-      const rank = item.salesRanks?.[0]?.classificationRanks?.[0]?.rank || Infinity;
-      return (
-        (minRank === undefined || rank >= minRank) &&
-        (maxRank === undefined || rank <= maxRank)
-      );
-    });
+    const filteredProducts = this.catalogService.filterProductsByUpcs(
+      data,
+      transformedUpcList,
+    );
+
+    const result = filteredProducts.map((product) => ({
+      asin: product.asin,
+      cost: product.attributes?.list_price?.[0]?.value || 'N/A',
+    }));
+
+    console.log('Filtered Products:', result);
+
+    return result;
   }
 }
